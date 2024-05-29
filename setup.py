@@ -184,7 +184,7 @@ After you install MySQL or MariaDB, you can run ‘sudo pip install mysqlclient 
 
 EXTRAS_REQUIRE = {
   'dlatk-pymallet': ['dlatk-pymallet==1.0.0'],
-  'gensim': ['gensim==3.8.3'],
+  'gensim': ['gensim'],
   'image': ['image<=1.5.33'],
   'jsonrpclib-pelix': ['jsonrpclib-pelix>=0.2.8'],
   'langid': ['langid>=1.1.4,<=1.1.6'],

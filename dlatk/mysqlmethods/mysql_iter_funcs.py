@@ -199,7 +199,7 @@ def mysql_multitable(db_eng, dict_iter, table_prefix, table_column, table_column
     while len(batch) > 0:
         df_batch = pd.DataFrame(batch)
         df_batch["batch_num"] = batch_num
-        first_line = dict(df_batch.ix[0])
+        first_line = dict(df_batch.iloc[0])
         table_name = table_prefix + table_column_transform(first_line[table_column])
         try:
             if template_table:

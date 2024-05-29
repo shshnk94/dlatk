@@ -1215,19 +1215,21 @@ class FeatureRefiner(FeatureGetter):
 
         ufeat_multigram_table = "ufeat$" + ufeat_table
 
-        drop_sql = "DROP TABLE IF EXISTS {ufeat}".format(ufeat=ufeat_multigram_table)
-        dlac.warn(drop_sql)
-        db_eng.execute(drop_sql)
-        create_sql = """CREATE TABLE {ufeat}
-            (id BIGINT PRIMARY KEY AUTO_INCREMENT, feat varchar(102), count bigint, KEY feat (feat) ) 
-            DEFAULT CHARSET=utf8mb4""".format(ufeat=ufeat_multigram_table)
-        dlac.warn(create_sql)
-        db_eng.execute(create_sql)
+        dropQuery = self.qb.create_drop_query(ufeat_multigram_table)
+        dropQuery.execute_query()
+
+        columns = [
+            Column("id", "BIGINT", primary_key=True, auto_increment=True),
+            Column("feat", "VARCHAR(102)"),
+            Column("count", "BIGINT")]
+        createQuery = self.qb.create_createTable_query(ufeat_multigram_table).add_columns(columns).add_mul_keys({"feat": "feat"})
+        createQuery = createQuery.set_character_set(self.encoding).set_collation(dlac.DEF_COLLATIONS[self.encoding.lower()])
+        createQuery = createQuery.set_engine(dlac.DEF_MYSQL_ENGINE)
+        createQuery.execute_query()
         
-        insert_sql = """INSERT INTO {ufeat} (feat, count) SELECT feat, sum(value) count 
-            FROM {ftbl} GROUP BY feat""".format(ufeat=ufeat_multigram_table, ftbl=self.featureTable)
-        dlac.warn(insert_sql)
-        db_eng.execute(insert_sql)
+        selectQuery = self.qb.create_select_query(self.featureTable).set_fields(["feat", "SUM(value) count"]).group_by("feat")
+        insertQuery = self.qb.create_insert_query(ufeat_multigram_table).values_from_select(selectQuery)
+        insertQuery.execute_query()
 
         print("Extending table if necessary...")
         new_cols = OrderedDict()
@@ -1243,11 +1245,15 @@ class FeatureRefiner(FeatureGetter):
         mif.extend_table(db_eng, ufeat_multigram_table, new_cols)
 
         print("Querying input data...")
-        total_count = db_eng.execute("SELECT sum(value) FROM {}".format(self.wordTable)).first()[0]
+        selectQuery = self.qb.create_select_query(self.wordTable).set_fields(["SUM(value)"])
+        total_count = selectQuery.execute_query()
 
         ###AHHHH this MUST be grouped!!!!
-        onegram_counts_iter =  db_eng.execute("SELECT feat, SUM(value) as count FROM {} GROUP BY feat".format(self.wordTable))
-        multigram_counts_iter =  db_eng.execute("SELECT id, feat, count FROM {} WHERE pmi IS NULL AND feat LIKE '% %' AND count > 1".format(ufeat_multigram_table))
+        selectQuery = self.qb.create_select_query(self.wordTable).set_fields(["feat", "SUM(value) count"]).group_by("feat")
+        onegram_counts_iter = selectQuery.execute_query()
+        where_condition = "pmi IS NULL AND feat LIKE '%% %%' AND count > 1"
+        selectQuery = self.qb.create_select_query(self.featureTable).set_fields(["id", "feat", "count"]).where(where_condition)
+        multigram_counts_iter = selectQuery.execute_query()
 
         pmi_iter = self._calc_pmi_iter(multigram_counts_iter, onegram_counts_iter, total_count)
 
@@ -1257,7 +1263,8 @@ class FeatureRefiner(FeatureGetter):
         print("Done npmi.")
 
         ### annotate pocc
-        num_groups_tot = db_eng.execute("SELECT count(distinct group_id) FROM {}".format(self.featureTable)).first()[0]
+        selectQuery = self.qb.create_select_query(self.featureTable).set_fields(["count(distinct group_id)"])
+        num_groups_tot = selectQuery.execute_query()
 
         print("Loading group counts by feat...")
         group_count_sql = "SELECT feat, count(*) group_count FROM {} GROUP BY feat".format(self.featureTable)
@@ -1265,11 +1272,13 @@ class FeatureRefiner(FeatureGetter):
 
         print("Loading ufeat data...")
         feat_iter =  db_eng.execute("SELECT id, feat FROM {} WHERE count > 1".format(ufeat_multigram_table))
+        selectQuery = self.qb.create_select_query(ufeat_multigram_table).set_fields(["id", "feat"]).where("count > 1")
+        feat_iter = selectQuery.execute_query()
 
         def pocc_gen():
             count = 0
             for (id, feat) in feat_iter:
-                num_groups = df_group_counts.ix[feat]['group_count']
+                num_groups = df_group_counts.loc[feat, 'group_count']
                 yield {'id':id, pocc_column:float(num_groups)/num_groups_tot}
         pocc_dict_iter = pocc_gen()
 
