@@ -248,7 +248,7 @@ class OurLdaMallet(LdaMallet):
         cmd = \
             self.mallet_path + \
             " import-file --preserve-case --keep-sequence " \
-            "--token-regex \"{}\" --input %s --output %s".format(self.token_regex)
+            "--remove-stopwords --token-regex \"{}\" --input %s --output %s".format(self.token_regex)
         stopwords = getattr(self, 'stopwords', None)
         if stopwords:
             cmd += " --stoplist-file {}".format(stopwords)
