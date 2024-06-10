@@ -219,3 +219,13 @@ if __name__ == "__main__":
       #long_description_content_type ='text/markdown'
   )
 
+  clone_folder = '/content' if os.getenv("COLAB_RELEASE_TAG") is not None else os.path.expanduser("~")
+  if not os.path.exists(os.path.join(clone_folder, 'dlatk')):
+    subprocess.run(['git', 'clone', '{}.git'.format(DOWNLOAD_URL), os.path.join(clone_folder, 'dlatk')])
+
+  if os.getenv("COLAB_RELEASE_TAG") is not None:
+
+    import dlatk
+    dlatk_path = dlatk.__path__[0]
+    subprocess.run(['bash', os.path.join(dlatk_path, 'tools', 'colabify.sh'), dlatk_path])
+
