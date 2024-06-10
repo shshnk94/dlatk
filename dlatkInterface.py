@@ -602,6 +602,8 @@ def main(fn_args = None):
                        help='produce data for making wordle tag clouds (same variables as correlate).')
     group.add_argument('--topic_tagcloud', '--topic_wordcloud', action='store_true', dest='topictc',
                        help='produce data for making topic wordles (must be used with a topic-based feature table and --topic_lexicon).')
+    group.add_argument('--topic_tagcloud_colorscheme', '--topic_wordcloud_colorscheme', type=str, dest='topictagcloudcolorscheme', default=getInitVar('topictagcloudcolorscheme', conf_parser, 'blue'),
+                       help='specify a color scheme to use for topic tagcloud generation. Default: blue, also accepts multi, red, red-random, redblue, bluered')
     group.add_argument('--corp_topic_tagcloud', '--corp_topic_wordcloud', action='store_true', dest='corptopictc',
                        help='produce data for making topic wordles (must be used with a topic-based feature table and --topic_lexicon).')
     group.add_argument('--make_wordclouds', '--make_tagclouds', action='store_true', dest='makewordclouds',
@@ -1669,7 +1671,7 @@ def main(fn_args = None):
         metric = dlac.getMetric(args.logisticReg, args.cohensd, args.IDP, args.spearman, args.outcomecontrols)
         outputFile = makeOutputFilename(args, fg, oa, suffix='_topic_tagcloud')
         # use plottingWhitelistPickle to link to a pickle file containing the words driving the categories
-        oa.printTopicTagCloudData(correls, args.topiclexicon, args.maxP, str(args), duplicateFilter = args.tcfilter, colorScheme=args.tagcloudcolorscheme, outputFile = outputFile, useFeatTableFeats=args.useFeatTableFeats, maxWords=args.numtopicwords, cleanCloud=args.cleancloud, metric=metric, minAbsEffectSize=args.minabseffectsize)
+        oa.printTopicTagCloudData(correls, args.topiclexicon, args.maxP, str(args), duplicateFilter = args.tcfilter, colorScheme=args.topictagcloudcolorscheme, outputFile = outputFile, useFeatTableFeats=args.useFeatTableFeats, maxWords=args.numtopicwords, cleanCloud=args.cleancloud, metric=metric, minAbsEffectSize=args.minabseffectsize)
         # don't want to base on this: maxWords = args.maxtcwords)
     if args.maketopicwordclouds:
         if not args.topictc and not args.corptopictc:
@@ -2133,12 +2135,12 @@ def main(fn_args = None):
     ##Plot Actions:
     if args.makealltopicwordclouds:
         outputFile = makeOutputFilename(args, None, None, suffix="_alltopics/")
-        if args.tagcloudcolorscheme == 'multi':#make sure not to use multi
-            args.tagcloudcolorscheme = 'blue'
+        if args.topictagcloudcolorscheme == 'multi':#make sure not to use multi
+            args.topictagcloudcolorscheme = 'blue'
         #wordcloud.makeLexiconTopicWordclouds(lexdb=args.lexicondb, lextable=args.topiclexicon, output=outputFile, color=args.tagcloudcolorscheme, max_words=args.numtopicwords, cleanCloud=args.cleancloud,mysql_config_file=args.mysqlconfigfile)
         if not dlaw: dlaw = DLAW()
         lextable = dlaw.load_lexicon(args.topiclexicon)
-        wordcloud.makeLexiconTopicWordclouds(dlaw, lextable=lextable, output=outputFile, color=args.tagcloudcolorscheme, max_words=args.numtopicwords, cleanCloud=args.cleancloud)
+        wordcloud.makeLexiconTopicWordclouds(dlaw, lextable=lextable, output=outputFile, color=args.topictagcloudcolorscheme, max_words=args.numtopicwords, cleanCloud=args.cleancloud)
     if args.barplot:
         outputFile = makeOutputFilename(args, fg, oa, "barplot")
         oa.barPlot(correls, outputFile)
