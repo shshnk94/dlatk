@@ -1131,12 +1131,15 @@ class FeatureRefiner(FeatureGetter):
             count += 1
             if count % 100000 == 0:
                 print("Processing onegram row {}".format(count))
-            onegram = onegram_count_row["feat"]
-            onegram_counts_dict[onegram] = onegram_count_row["count"]
+            onegram = onegram_count_row[0]
+            onegram_counts_dict[onegram] = onegram_count_row[1]
 
         for multigram_count_row in multigram_counts_iter:
-            multigram_count_row = dict(multigram_count_row)
-            multigram = multigram_count_row['feat']
+            multigram_count_row = dict({
+                "id": multigram_count_row[0],
+                "feat": multigram_count_row[1], 
+                "count": multigram_count_row[2]})
+            multigram = multigram_count_row["feat"]
             onegrams = tokenize_func(multigram)
             num_tokens = len(onegrams)
 
@@ -1145,10 +1148,10 @@ class FeatureRefiner(FeatureGetter):
                 (pmi_val, npmi_val, pmi_filter_val, npmi_filter_val) = (None, None, None, None)
 
             else:
-                count_multigram = multigram_count_row['count']
+                count_multigram = multigram_count_row["count"]
                 onegram_counts = [onegram_counts_dict[onegram] for onegram in onegrams]
                 pmi_val = self._colloc_pmi(count_multigram, onegram_counts, total_count)
-                npmi_val = self._colloc_pmi(multigram_count_row['count'], onegram_counts, total_count, normalize=True)
+                npmi_val = self._colloc_pmi(multigram_count_row["count"], onegram_counts, total_count, normalize=True)
                 pmi_filter_val = pmi_val/(num_tokens - 1)
                 npmi_filter_val = npmi_val/(num_tokens - 1)
 
@@ -1227,8 +1230,8 @@ class FeatureRefiner(FeatureGetter):
         createQuery = createQuery.set_engine(dlac.DEF_MYSQL_ENGINE)
         createQuery.execute_query()
         
-        selectQuery = self.qb.create_select_query(self.featureTable).set_fields(["feat", "SUM(value) count"]).group_by("feat")
-        insertQuery = self.qb.create_insert_query(ufeat_multigram_table).values_from_select(selectQuery)
+        selectQuery = self.qb.create_select_query(self.featureTable).set_fields(["feat", "SUM(value) count"]).group_by(["feat"])
+        insertQuery = self.qb.create_insert_query(ufeat_multigram_table).set_values([("feat", ''), ("count", '')]).values_from_select(selectQuery)
         insertQuery.execute_query()
 
         print("Extending table if necessary...")
@@ -1237,38 +1240,38 @@ class FeatureRefiner(FeatureGetter):
         new_cols['pmi_filter_val'] = 'DOUBLE';
         new_cols['npmi'] = 'DOUBLE';
         new_cols['npmi_filter_val'] = 'DOUBLE';
-        new_cols['npmi'] = 'DOUBLE';
-        new_cols['npmi_filter_val'] = 'DOUBLE';
         group_column = self.featureTable.split('$')[3]
         pocc_column = "pocc_{}_gft0".format(group_column)
         new_cols[pocc_column] = 'DOUBLE';
-        mif.extend_table(db_eng, ufeat_multigram_table, new_cols)
+        mif.extend_table(self.data_engine, ufeat_multigram_table, new_cols)
 
         print("Querying input data...")
         selectQuery = self.qb.create_select_query(self.wordTable).set_fields(["SUM(value)"])
-        total_count = selectQuery.execute_query()
+        total_count = selectQuery.execute_query()[0][0]
 
         ###AHHHH this MUST be grouped!!!!
-        selectQuery = self.qb.create_select_query(self.wordTable).set_fields(["feat", "SUM(value) count"]).group_by("feat")
+        selectQuery = self.qb.create_select_query(self.wordTable).set_fields(["feat", "SUM(value) count"]).group_by(["feat"])
         onegram_counts_iter = selectQuery.execute_query()
         where_condition = "pmi IS NULL AND feat LIKE '%% %%' AND count > 1"
-        selectQuery = self.qb.create_select_query(self.featureTable).set_fields(["id", "feat", "count"]).where(where_condition)
+        selectQuery = self.qb.create_select_query(ufeat_multigram_table).set_fields(["id", "feat", "count"]).where(where_condition)
         multigram_counts_iter = selectQuery.execute_query()
 
         pmi_iter = self._calc_pmi_iter(multigram_counts_iter, onegram_counts_iter, total_count)
 
         print("Processing npmi data...")
-        mif.mysql_update(db_eng, ufeat_multigram_table, pmi_iter)
+        mif.mysql_update(self.data_engine, ufeat_multigram_table, pmi_iter)
 
         print("Done npmi.")
 
         ### annotate pocc
         selectQuery = self.qb.create_select_query(self.featureTable).set_fields(["count(distinct group_id)"])
-        num_groups_tot = selectQuery.execute_query()
+        num_groups_tot = selectQuery.execute_query()[0][0]
 
         print("Loading group counts by feat...")
-        group_count_sql = "SELECT feat, count(*) group_count FROM {} GROUP BY feat".format(self.featureTable)
-        df_group_counts = pd.read_sql(group_count_sql, db_eng, index_col="feat")
+        #group_count_sql = "SELECT feat, count(*) group_count FROM {} GROUP BY feat".format(self.featureTable)
+        #df_group_counts = pd.read_sql(group_count_sql, db_eng, index_col="feat")
+        selectQuery = self.qb.create_select_query(self.featureTable).set_fields(["feat", "count(*) group_count"]).group_by(["feat"])
+        df_group_counts = {feat: count for feat, count in selectQuery.execute_query()}
 
         print("Loading ufeat data...")
         feat_iter =  db_eng.execute("SELECT id, feat FROM {} WHERE count > 1".format(ufeat_multigram_table))
@@ -1278,12 +1281,12 @@ class FeatureRefiner(FeatureGetter):
         def pocc_gen():
             count = 0
             for (id, feat) in feat_iter:
-                num_groups = df_group_counts.loc[feat, 'group_count']
+                num_groups = df_group_counts[feat]
                 yield {'id':id, pocc_column:float(num_groups)/num_groups_tot}
         pocc_dict_iter = pocc_gen()
 
         print("Updating ufeat data with pocc values...")
-        mif.mysql_update(db_eng, ufeat_multigram_table, pocc_dict_iter, log_every=10000)
+        mif.mysql_update(self.data_engine, ufeat_multigram_table, pocc_dict_iter, log_every=10000)
         return ufeat_multigram_table
 
 
